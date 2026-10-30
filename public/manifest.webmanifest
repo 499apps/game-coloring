@@ -1,0 +1,19 @@
+{
+  "name": "Coloring - 499apps Games",
+  "short_name": "Coloring",
+  "description": "Paint glossy 3D pictures. No ads, no tracking. Works offline.",
+  "id": "/games/coloring/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1b1740",
+  "background_color": "#1b1740",
+  "categories": ["games", "kids", "education"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
