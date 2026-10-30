@@ -1,4 +1,7 @@
-/* Game page layout. Menus stay in the kit's left rail; the HUD sits top-right. */
+/*
+ * Coloring page layout. Menus stay in the kit's left rail; the tool tray, its panels, the
+ * picture picker, the gallery and the toast all sit on the left as well (owner rule).
+ */
 
 .game-stage {
   position: absolute;
@@ -8,27 +11,553 @@
   left: var(--g499-rail-inset);
 }
 
-.game-hud-value {
-  min-width: 3ch;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.cl-safe-probe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
 }
 
-.game-swatch {
-  display: inline-block;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--g499-coral);
+/* ---------- Buttons ---------- */
+
+.cl-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--g499-touch);
+  height: var(--g499-touch);
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+  color: var(--g499-cream);
+  cursor: pointer;
   box-shadow:
-    inset 0 -3px 0 rgba(0, 0, 0, 0.2),
-    inset 0 2px 0 rgba(255, 255, 255, 0.45),
-    0 0 0 2px rgba(255, 255, 255, 0.85);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+  transition:
+    transform 160ms cubic-bezier(0.2, 1.4, 0.4, 1),
+    background 160ms ease,
+    opacity 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cl-btn:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
+}
+
+.cl-btn:active {
+  transform: scale(0.92);
+}
+
+.cl-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+
+.cl-btn:focus-visible,
+.cl-swatch:focus-visible,
+.cl-tile:focus-visible {
+  outline: 3px solid var(--g499-lemon);
+  outline-offset: 2px;
+}
+
+.cl-btn[aria-pressed='true'] {
+  background: linear-gradient(180deg, var(--g499-lemon), var(--g499-tangerine));
+  color: var(--g499-ink);
+}
+
+/* ---------- Tool tray (left) ---------- */
+
+.cl-tray {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--g499-rail-inset) + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateY(-50%);
+  z-index: 22;
+  pointer-events: none;
+}
+
+.cl-tray-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(23, 19, 43, 0.82), rgba(45, 34, 89, 0.74));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  pointer-events: auto;
+}
+
+.cl-tool-btn .cl-size-badge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--g499-ink);
+  color: var(--cl-paint, var(--g499-coral));
+  align-items: center;
+  justify-content: center;
+}
+
+.cl-size-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cl-tool-btn[data-tool='rainbow'] .g499-icon-svg {
+  color: var(--g499-lemon);
+}
+
+.cl-color-dot {
+  display: block;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 42%),
+    var(--cl-paint, var(--g499-coral));
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.9),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.2),
+    0 4px 10px rgba(0, 0, 0, 0.35);
   transition: background 160ms ease;
 }
 
+.cl-btn.is-away {
+  color: var(--g499-lemon);
+  box-shadow:
+    0 0 0 3px var(--g499-lemon),
+    0 0 18px rgba(255, 230, 109, 0.55);
+}
+
+/* Phones: two groups above and below the kit's menu button in the middle of the left edge. */
+@media (max-width: 719px) {
+  .cl-tray {
+    top: 0;
+    bottom: 0;
+    left: calc(6px + var(--g499-safe-left));
+    width: 68px;
+    transform: none;
+  }
+
+  .cl-tray-top {
+    position: absolute;
+    left: 0;
+    bottom: calc(50% + 38px);
+  }
+
+  .cl-tray-bottom {
+    position: absolute;
+    left: 0;
+    top: calc(50% + 38px);
+  }
+}
+
+/* Short phones in landscape with the drawer: a two-column tray right of the menu button. */
+@media (max-width: 719px) and (max-height: 520px) {
+  .cl-tray {
+    top: 50%;
+    bottom: auto;
+    left: calc(70px + var(--g499-safe-left));
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    transform: translateY(-50%);
+  }
+
+  .cl-tray-top,
+  .cl-tray-bottom {
+    position: static;
+  }
+}
+
+@media (min-width: 720px) and (max-height: 430px) {
+  .cl-tray {
+    gap: 8px;
+  }
+
+  .cl-tray-group {
+    gap: 6px;
+    padding: 4px;
+  }
+}
+
+/* ---------- Fly-out panels (open to the right of the tray, still on the left side) ---------- */
+
+.cl-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 23;
+  background: rgba(10, 8, 24, 0.18);
+}
+
+.cl-scrim[hidden],
+.cl-panel[hidden],
+.cl-overlay[hidden],
+.cl-toast[hidden] {
+  display: none;
+}
+
+.cl-panel {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--cl-tray-right, 96px) + 10px);
+  z-index: 24;
+  max-height: calc(100% - 24px - var(--g499-safe-top) - var(--g499-safe-bottom));
+  overflow: auto;
+  padding: 12px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(45, 34, 89, 0.97), rgba(27, 23, 64, 0.97));
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transform: translateY(-50%);
+  animation: cl-pop 180ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  overscroll-behavior: contain;
+}
+
+@keyframes cl-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-10px) scale(0.94);
+  }
+}
+
+.cl-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, var(--g499-touch));
+  gap: 8px;
+}
+
+.cl-size-row {
+  display: grid;
+  grid-template-columns: repeat(3, var(--g499-touch));
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--cl-paint, var(--g499-coral));
+}
+
+.cl-size-row .cl-btn[aria-pressed='true'] {
+  color: var(--g499-ink);
+}
+
+.cl-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, var(--g499-touch));
+  gap: 10px;
+}
+
+@media (max-height: 600px) {
+  .cl-palette-grid {
+    grid-template-columns: repeat(6, var(--g499-touch));
+  }
+}
+
+.cl-swatch {
+  width: var(--g499-touch);
+  height: var(--g499-touch);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 40%),
+    var(--sw);
+  box-shadow:
+    inset 0 -5px 0 rgba(0, 0, 0, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cl-swatch:hover {
+  transform: scale(1.08);
+}
+
+.cl-swatch:active {
+  transform: scale(0.92);
+}
+
+.cl-swatch[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 4px var(--g499-night),
+    0 0 0 7px var(--g499-lemon),
+    inset 0 -5px 0 rgba(0, 0, 0, 0.18);
+  transform: scale(1.04);
+}
+
+/* ---------- Picture picker and gallery ---------- */
+
+.cl-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--g499-safe-top)) calc(16px + var(--g499-safe-right)) calc(16px + var(--g499-safe-bottom))
+    calc(16px + max(var(--g499-rail-inset), var(--g499-safe-left)));
+  background: rgba(10, 8, 24, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+@media (max-width: 719px) {
+  .cl-overlay {
+    padding-left: calc(72px + var(--g499-safe-left));
+  }
+}
+
+.cl-sheet {
+  width: min(100%, 1000px);
+  max-height: 100%;
+  overflow: auto;
+  padding: 12px 16px 18px;
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(45, 34, 89, 0.97), rgba(27, 23, 64, 0.97));
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  overscroll-behavior: contain;
+  animation: cl-rise 220ms cubic-bezier(0.2, 1.2, 0.4, 1);
+}
+
+@keyframes cl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+.cl-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.cl-sheet-icon {
+  display: inline-flex;
+  color: var(--g499-lemon);
+}
+
+.cl-sheet-icon .g499-icon-svg {
+  width: 34px;
+  height: 34px;
+}
+
+.cl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 719px) {
+  .cl-grid {
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 12px;
+  }
+}
+
+.cl-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 4px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fbf6ea;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 180ms cubic-bezier(0.2, 1.4, 0.4, 1),
+    border-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cl-tile:hover {
+  transform: translateY(-3px) scale(1.02);
+}
+
+.cl-tile:active {
+  transform: scale(0.96);
+}
+
+.cl-tile.is-current {
+  border-color: var(--g499-lemon);
+}
+
+.cl-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cl-tile-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: none;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--g499-lemon);
+  color: var(--g499-ink);
+}
+
+.cl-tile.is-current .cl-tile-badge {
+  display: inline-flex;
+}
+
+.cl-gitem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cl-gactions {
+  display: flex;
+  gap: 8px;
+}
+
+.cl-hold {
+  overflow: hidden;
+  color: var(--g499-bubblegum);
+}
+
+.cl-hold .g499-hold-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(247, 131, 172, 0.15), rgba(247, 131, 172, 0.6));
+  transform: scaleY(0);
+  transform-origin: bottom;
+  pointer-events: none;
+  transition: transform 120ms ease-out;
+}
+
+.cl-hold.is-holding .g499-hold-fill {
+  transform: scaleY(1);
+  transition: transform var(--g499-hold-ms, 1000ms) linear;
+}
+
+.cl-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+  color: rgba(255, 247, 230, 0.4);
+}
+
+.cl-empty-svg {
+  width: 96px;
+  height: 96px;
+}
+
+/* ---------- Toast (top left) ---------- */
+
+.cl-toast {
+  position: absolute;
+  top: calc(14px + var(--g499-safe-top));
+  left: calc(var(--cl-tray-right, 96px) + 10px);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - var(--cl-tray-right, 96px) - 24px);
+  padding: 10px 18px 10px 12px;
+  border-radius: 999px;
+  background: rgba(23, 19, 43, 0.9);
+  color: var(--g499-cream);
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: cl-rise 220ms cubic-bezier(0.2, 1.2, 0.4, 1);
+}
+
+.cl-toast .g499-icon-svg {
+  color: var(--g499-lemon);
+}
+
+.cl-toast[data-icon='full'] .g499-icon-svg {
+  color: var(--g499-coral);
+}
+
+/* ---------- Flat paper (no WebGL) ---------- */
+
+.cl-flat {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, var(--g499-plum), var(--g499-night));
+  touch-action: none;
+}
+
+.cl-flat-art {
+  position: absolute;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 10px var(--g499-cream),
+    0 0 0 18px #ff7f95,
+    0 24px 60px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+}
+
+.cl-flat.has-focus::after {
+  content: '';
+  position: absolute;
+  left: var(--cl-focus-x);
+  top: var(--cl-focus-y);
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border: 5px solid var(--g499-lemon);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Test mode pauses animations at their first frame; these must show their end state. */
+html.g499-test .cl-panel,
+html.g499-test .cl-sheet,
+html.g499-test .cl-toast {
+  animation: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .game-swatch {
-    transition: none;
+  .cl-btn,
+  .cl-swatch,
+  .cl-tile,
+  .cl-color-dot,
+  .cl-panel,
+  .cl-sheet,
+  .cl-toast {
+    transition: none !important;
+    animation: none !important;
   }
 }

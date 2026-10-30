@@ -3,8 +3,10 @@
 This project is MIT licensed (see `LICENSE`). This file lists every third-party package.
 
 Assets: there are no third-party assets. App icons and UI icons are original art drawn in code
-(`src/kit/scripts/lib/icon-art.mjs`, `src/kit/icons.ts`). Sounds are synthesised at runtime with
-WebAudio. Text uses the system font stack. Pictures to color are original 3D shapes made in code.
+(`src/kit/scripts/lib/icon-art.mjs`, `src/kit/icons.ts`, `src/ui-icons.ts`). Sounds are synthesised
+at runtime with WebAudio. Text uses the system font stack. The nine pictures to color are original
+line art drawn in code for this project (`src/game/scenes.ts`); the paper grain and the playroom
+are generated in code too.
 
 ## Bundled into the game
 

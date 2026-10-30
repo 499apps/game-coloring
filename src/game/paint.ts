@@ -1,39 +1,18 @@
 /**
- * Paint state for the coloring scaffold (pure): which paint is picked, the colour of every
- * region of the picture, and save/load in a versioned, validated format.
+ * Editor state (pure): the open picture, the tool, the paint, the brush size and the
+ * keyboard focus (which region Space fills). Every change returns a new state.
  */
-import { funColors } from '../kit/theme';
+import { DEFAULT_SCENE_ID, SCENES } from './scenes';
+import { PREFS_VERSION, type Prefs } from './save';
+import { PALETTE, SIZES, TOOLS, clampColor, type Command, type ToolId } from './tools';
 
-/** Paint pots, in palette order. */
-export const PAINTS: readonly string[] = funColors;
-
-/** Regions of the preview flower: 6 petals, the centre, 2 leaves and the stem. */
-export const REGIONS = [
-  'petal-0',
-  'petal-1',
-  'petal-2',
-  'petal-3',
-  'petal-4',
-  'petal-5',
-  'center',
-  'leaf-left',
-  'leaf-right',
-  'stem',
-] as const;
-
-export type RegionId = (typeof REGIONS)[number];
-
-/** -1 means not painted yet. */
-export const UNPAINTED = -1;
-
-export interface PaintState {
-  paint: number;
+export interface EditorState {
+  scene: string;
+  tool: ToolId;
+  color: number;
+  size: number;
+  /** Index into the picture's focus order (keyboard and gamepad). */
   focus: number;
-  colors: number[];
-}
-
-export function createPaintState(): PaintState {
-  return { paint: 0, focus: 0, colors: REGIONS.map(() => UNPAINTED) };
 }
 
 /** Step through a list with wrap-around. */
@@ -42,49 +21,68 @@ export function cycle(index: number, delta: number, length: number): number {
   return (((index + delta) % length) + length) % length;
 }
 
-export function pickPaint(s: PaintState, delta: number): PaintState {
-  return { ...s, paint: cycle(s.paint, delta, PAINTS.length) };
+export function createEditor(p?: Partial<Prefs>): EditorState {
+  const scene = p?.scene && SCENES.some((s) => s.id === p.scene) ? p.scene : DEFAULT_SCENE_ID;
+  return {
+    scene,
+    tool: p?.tool && TOOLS.includes(p.tool) ? p.tool : 'fill',
+    color: typeof p?.color === 'number' ? clampColor(p.color) : 0,
+    size: typeof p?.size === 'number' ? Math.max(0, Math.min(SIZES.length - 1, Math.floor(p.size))) : 1,
+    focus: 0,
+  };
 }
 
-export function moveFocus(s: PaintState, delta: number): PaintState {
-  return { ...s, focus: cycle(s.focus, delta, REGIONS.length) };
+export function setScene(s: EditorState, scene: string): EditorState {
+  if (!SCENES.some((d) => d.id === scene)) return s;
+  return { ...s, scene, focus: 0 };
 }
 
-export function paintRegion(s: PaintState, region: number): PaintState {
-  if (!Number.isInteger(region) || region < 0 || region >= REGIONS.length) return s;
-  const colors = s.colors.slice();
-  colors[region] = s.paint;
-  return { ...s, colors, focus: region };
+export function setColor(s: EditorState, index: number): EditorState {
+  if (!Number.isInteger(index) || index < 0 || index >= PALETTE.length) return s;
+  return { ...s, color: index };
 }
 
-export function paintedCount(s: PaintState): number {
-  return s.colors.filter((c) => c !== UNPAINTED).length;
+export function stepColor(s: EditorState, delta: number): EditorState {
+  return { ...s, color: cycle(s.color, delta, PALETTE.length) };
 }
 
-export const SAVE_VERSION = 1;
-
-export interface SaveData {
-  v: number;
-  paint: number;
-  colors: number[];
+export function setTool(s: EditorState, tool: ToolId): EditorState {
+  return TOOLS.includes(tool) ? { ...s, tool } : s;
 }
 
-export function serialize(s: PaintState): SaveData {
-  return { v: SAVE_VERSION, paint: s.paint, colors: s.colors.slice() };
+export function stepTool(s: EditorState, delta: number): EditorState {
+  return { ...s, tool: TOOLS[cycle(TOOLS.indexOf(s.tool), delta, TOOLS.length)] as ToolId };
 }
 
-/** Load saved data. Anything malformed falls back to a fresh state (never throws). */
-export function deserialize(data: unknown): PaintState {
-  const fresh = createPaintState();
-  if (!data || typeof data !== 'object') return fresh;
-  const d = data as Partial<SaveData>;
-  if (d.v !== SAVE_VERSION || !Array.isArray(d.colors) || d.colors.length !== REGIONS.length) return fresh;
-  const validColor = (c: unknown) =>
-    typeof c === 'number' && Number.isInteger(c) && c >= UNPAINTED && c < PAINTS.length;
-  if (!d.colors.every(validColor)) return fresh;
-  const paint =
-    typeof d.paint === 'number' && Number.isInteger(d.paint) && d.paint >= 0 && d.paint < PAINTS.length
-      ? d.paint
-      : 0;
-  return { paint, focus: 0, colors: d.colors.slice() };
+export function stepSize(s: EditorState, delta: number): EditorState {
+  return { ...s, size: Math.max(0, Math.min(SIZES.length - 1, s.size + delta)) };
+}
+
+export function setSize(s: EditorState, size: number): EditorState {
+  if (!Number.isInteger(size) || size < 0 || size >= SIZES.length) return s;
+  return { ...s, size };
+}
+
+/** Move the keyboard focus through `count` regions with wrap-around. */
+export function moveFocus(s: EditorState, delta: number, count: number): EditorState {
+  return { ...s, focus: cycle(s.focus, delta, count) };
+}
+
+/** Apply a state command from the keyboard. Undo and redo are not state changes here. */
+export function applyCommand(s: EditorState, c: Command): EditorState {
+  switch (c.kind) {
+    case 'color':
+      return setColor(s, c.index);
+    case 'tool':
+      return setTool(s, c.tool);
+    case 'size':
+      return stepSize(s, c.delta);
+    case 'undo':
+    case 'redo':
+      return s;
+  }
+}
+
+export function toPrefs(s: EditorState): Prefs {
+  return { v: PREFS_VERSION, scene: s.scene, tool: s.tool, color: s.color, size: s.size };
 }

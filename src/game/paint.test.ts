@@ -1,29 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { createMemoryStorage, createStorage } from '../kit/storage';
 import {
-  PAINTS,
-  REGIONS,
-  UNPAINTED,
-  createPaintState,
+  applyCommand,
+  createEditor,
   cycle,
-  deserialize,
   moveFocus,
-  paintRegion,
-  paintedCount,
-  pickPaint,
-  serialize,
-  type PaintState,
+  setColor,
+  setScene,
+  setSize,
+  stepColor,
+  stepSize,
+  stepTool,
+  toPrefs,
 } from './paint';
-
-const stateArb: fc.Arbitrary<PaintState> = fc.record({
-  paint: fc.integer({ min: 0, max: PAINTS.length - 1 }),
-  focus: fc.constant(0),
-  colors: fc.array(fc.integer({ min: UNPAINTED, max: PAINTS.length - 1 }), {
-    minLength: REGIONS.length,
-    maxLength: REGIONS.length,
-  }),
-});
+import { parsePrefs } from './save';
+import { DEFAULT_SCENE_ID } from './scenes';
+import { PALETTE, SIZES, TOOLS, keyToCommand } from './tools';
 
 describe('cycle', () => {
   it('wraps both ways and stays in range (property)', () => {
@@ -36,66 +28,67 @@ describe('cycle', () => {
     );
     expect(cycle(0, -1, 8)).toBe(7);
     expect(cycle(7, 1, 8)).toBe(0);
+    expect(cycle(3, 1, 0)).toBe(0);
   });
 });
 
-describe('paint state', () => {
-  it('starts unpainted', () => {
-    const s = createPaintState();
-    expect(paintedCount(s)).toBe(0);
-    expect(s.colors).toHaveLength(REGIONS.length);
+describe('editor state', () => {
+  it('starts on the default picture with the fill tool', () => {
+    const s = createEditor();
+    expect(s).toEqual({ scene: DEFAULT_SCENE_ID, tool: 'fill', color: 0, size: 1, focus: 0 });
   });
 
-  it('paints one region with the picked paint and leaves the rest', () => {
-    const s = paintRegion(pickPaint(createPaintState(), 2), 4);
-    expect(s.colors[4]).toBe(2);
-    expect(paintedCount(s)).toBe(1);
-    expect(s.focus).toBe(4);
+  it('ignores unknown pictures, paints and sizes', () => {
+    const s = createEditor();
+    expect(setScene(s, 'nope')).toBe(s);
+    expect(setColor(s, -1)).toBe(s);
+    expect(setColor(s, PALETTE.length)).toBe(s);
+    expect(setSize(s, 7)).toBe(s);
+    expect(createEditor({ scene: 'nope', color: 9.7, size: 99 })).toMatchObject({ scene: DEFAULT_SCENE_ID, size: SIZES.length - 1 });
   });
 
-  it('ignores bad region numbers', () => {
-    const s = createPaintState();
-    expect(paintRegion(s, -1)).toBe(s);
-    expect(paintRegion(s, REGIONS.length)).toBe(s);
-    expect(paintRegion(s, 1.5)).toBe(s);
-  });
-
-  it('moves focus with wrap', () => {
-    expect(moveFocus(createPaintState(), -1).focus).toBe(REGIONS.length - 1);
-  });
-});
-
-describe('save and load', () => {
-  it('round-trips any valid state (property)', () => {
+  it('cycles paints, tools and sizes within range (property)', () => {
     fc.assert(
-      fc.property(stateArb, (s) => {
-        expect(deserialize(serialize(s))).toEqual(s);
-      }),
-    );
-  });
-
-  it('round-trips through g499: storage as JSON (property)', () => {
-    fc.assert(
-      fc.property(stateArb, (s) => {
-        const store = createStorage(createMemoryStorage());
-        store.set('coloring:preview', serialize(s));
-        expect(store.keys()).toEqual(['g499:coloring:preview']);
-        expect(deserialize(store.get('coloring:preview', null))).toEqual(s);
-      }),
-    );
-  });
-
-  it('falls back to a fresh state for any malformed input (property)', () => {
-    fc.assert(
-      fc.property(fc.anything(), (junk) => {
-        const s = deserialize(junk);
-        expect(s.colors).toHaveLength(REGIONS.length);
-        for (const c of s.colors) {
-          expect(c).toBeGreaterThanOrEqual(UNPAINTED);
-          expect(c).toBeLessThan(PAINTS.length);
+      fc.property(fc.array(fc.integer({ min: -3, max: 3 }), { maxLength: 60 }), (deltas) => {
+        let s = createEditor();
+        for (const d of deltas) {
+          s = stepColor(stepTool(stepSize(s, d), d), d);
+          expect(s.color).toBeGreaterThanOrEqual(0);
+          expect(s.color).toBeLessThan(PALETTE.length);
+          expect(TOOLS).toContain(s.tool);
+          expect(s.size).toBeGreaterThanOrEqual(0);
+          expect(s.size).toBeLessThan(SIZES.length);
         }
       }),
     );
-    expect(deserialize({ v: 99, paint: 0, colors: [] })).toEqual(createPaintState());
+  });
+
+  it('moves the focus with wrap-around and resets it for a new picture', () => {
+    let s = moveFocus(createEditor(), -1, 12);
+    expect(s.focus).toBe(11);
+    s = setScene(s, 'cat');
+    expect(s.focus).toBe(0);
+    expect(s.scene).toBe('cat');
+  });
+
+  it('applies keyboard commands (input mapping to state)', () => {
+    let s = createEditor();
+    s = applyCommand(s, keyToCommand({ code: 'Digit3' }) ?? { kind: 'undo' });
+    expect(s.color).toBe(2);
+    s = applyCommand(s, keyToCommand({ code: 'KeyB' }) ?? { kind: 'undo' });
+    expect(s.tool).toBe('brush');
+    s = applyCommand(s, keyToCommand({ code: 'BracketRight' }) ?? { kind: 'undo' });
+    expect(s.size).toBe(2);
+    expect(applyCommand(s, { kind: 'undo' })).toBe(s);
+  });
+
+  it('saves as prefs that load back the same (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 200 }), fc.integer({ min: 0, max: 5 }), fc.integer({ min: -2, max: 2 }), (c, t, z) => {
+        const s = stepSize(stepTool(stepColor(createEditor(), c), t), z);
+        const back = createEditor(parsePrefs(toPrefs(s)));
+        expect(back).toEqual({ ...s, focus: 0 });
+      }),
+    );
   });
 });
