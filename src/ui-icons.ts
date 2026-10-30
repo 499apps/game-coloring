@@ -22,6 +22,7 @@ const PATHS = {
   sizeSmall: '<circle cx="12" cy="12" r="2.6" fill="currentColor"/>',
   sizeMedium: '<circle cx="12" cy="12" r="4.8" fill="currentColor"/>',
   sizeLarge: '<circle cx="12" cy="12" r="7.6" fill="currentColor"/>',
+  next: '<path d="M5 12h13"/><path d="m12.5 6 6 6-6 6"/>',
 } as const;
 
 export type UiIcon = keyof typeof PATHS;

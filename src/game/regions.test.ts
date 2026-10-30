@@ -8,7 +8,11 @@ import {
   labelAt,
   labelRegions,
   largestInnerRegion,
+  MAX_PICK_RADIUS,
   nearestLabel,
+  pickRegion,
+  TAP_TOLERANCE_CSS,
+  toleranceToArt,
   wallsFromRgba,
 } from './regions';
 
@@ -146,6 +150,101 @@ describe('nearestLabel', () => {
         const l = nearestLabel(map, x, y, 6);
         expect(l === 0 || (l >= 1 && l <= map.regions.length)).toBe(true);
       }),
+    );
+  });
+});
+
+describe('pickRegion and tap tolerance (review C3)', () => {
+  /**
+   * 40 x 40 picture: a big open area with a small 4 x 4 "star" (walled box) at (20..23, 20..23)
+   * inside a 1-px outline ring at 19 and 24.
+   */
+  function starMap() {
+    const w = 40;
+    const h = 40;
+    const walls = new Uint8Array(w * h);
+    for (let i = 19; i <= 24; i++) {
+      walls[19 * w + i] = 1;
+      walls[24 * w + i] = 1;
+      walls[i * w + 19] = 1;
+      walls[i * w + 24] = 1;
+    }
+    const map = labelRegions(walls, w, h);
+    return { map, big: labelAt(map, 2, 2), star: labelAt(map, 21, 21) };
+  }
+
+  it('converts the CSS tolerance to picture px from the shown picture width', () => {
+    // 1024 px picture shown 256 CSS px wide: 4 picture px per CSS px.
+    expect(toleranceToArt(TAP_TOLERANCE_CSS, 1024, 256)).toBe(64);
+    // Zoomed in to 1024 CSS px: 1 picture px per CSS px.
+    expect(toleranceToArt(TAP_TOLERANCE_CSS, 1024, 1024)).toBe(16);
+    // Capped, and safe for bad input.
+    expect(toleranceToArt(16, 1024, 10)).toBe(MAX_PICK_RADIUS);
+    expect(toleranceToArt(16, 1024, 0)).toBe(16);
+    expect(toleranceToArt(16, 1024, Number.NaN)).toBe(16);
+  });
+
+  it('prefers a near small unpainted region over the big one', () => {
+    const { map, big, star } = starMap();
+    expect(big).not.toBe(star);
+    // A tap in the big area 3 px from the star ring.
+    expect(pickRegion(map, 16, 21, { maxR: 6 })).toBe(star);
+    // On the outline next to the star.
+    expect(pickRegion(map, 19, 21, { maxR: 6 })).toBe(star);
+    // Too far away: the big region.
+    expect(pickRegion(map, 5, 5, { maxR: 6 })).toBe(big);
+  });
+
+  it('keeps a tap well inside a big region in that region, even with a small one in reach', () => {
+    const { map, big, star } = starMap();
+    // 8 px from the star (in reach of maxR 8) but 7 px from the big region's edge (over maxR / 2).
+    expect(pickRegion(map, 12, 21, { maxR: 8 })).toBe(big);
+    // Near the edge with the same radius: the star.
+    expect(pickRegion(map, 16, 21, { maxR: 8 })).toBe(star);
+  });
+
+  it('does not steal taps for a small region that already has paint', () => {
+    const { map, big, star } = starMap();
+    const painted = (l: number) => l === star;
+    expect(pickRegion(map, 16, 21, { maxR: 6, isPainted: painted })).toBe(big);
+    // A tap right inside the painted star still picks the star (repainting works).
+    expect(pickRegion(map, 21, 21, { maxR: 6, isPainted: painted })).toBe(star);
+  });
+
+  it('treats a region as small only up to smallArea', () => {
+    const { map, big } = starMap();
+    expect(pickRegion(map, 16, 21, { maxR: 6, smallArea: 4 })).toBe(big);
+  });
+
+  it('returns a real region or 0 for any tap, and the tap region when nothing small is near (property)', () => {
+    fc.assert(
+      fc.property(
+        wallsArb,
+        fc.integer({ min: -5, max: 30 }),
+        fc.integer({ min: -5, max: 30 }),
+        fc.integer({ min: 0, max: 8 }),
+        ({ w, h, walls }, x, y, r) => {
+          const map = labelRegions(walls, w, h);
+          const l = pickRegion(map, x, y, { maxR: r });
+          expect(l === 0 || (l >= 1 && l <= map.regions.length)).toBe(true);
+          // With no small regions at all, it behaves like the old outline snap.
+          const none = pickRegion(map, x, y, { maxR: r, smallArea: 0 });
+          expect(none).toBe(labelAt(map, x, y) || nearestLabel(map, x, y, r));
+          // A region other than the one under the tap is within r px of it (square window).
+          if (l !== 0 && l !== labelAt(map, x, y)) {
+            let near = false;
+            for (let dy = -r; dy <= r && !near; dy++) {
+              for (let dx = -r; dx <= r; dx++) {
+                if (labelAt(map, x + dx, y + dy) === l) {
+                  near = true;
+                  break;
+                }
+              }
+            }
+            expect(near).toBe(true);
+          }
+        },
+      ),
     );
   });
 });

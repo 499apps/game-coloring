@@ -14,11 +14,12 @@ import {
   easeOutBack,
   easeOutCubic,
   makeRoom,
+  matteMaterial,
   roundedBox,
 } from './kit/scene-helpers';
 import { funColors, mixHex, palette } from './kit/theme';
 import type { ArtPoint, ArtView, CursorMode, ViewInsets } from './view';
-import { fitDistance, freeArea, type FitPoint } from './game/fit';
+import { fitDistance, fitSubject, freeArea, paperOutline, type FitPoint } from './game/fit';
 
 /** Picture size in world units. */
 const ART = 4;
@@ -36,13 +37,18 @@ const LEDGE_W = FRAME + 0.36;
 const FIT_MARGIN = 0.1;
 
 /**
- * Picture lighting. A low diffuse part plus a self-lit part keeps white paper just under the
- * bloom threshold, so the art reads clearly on every screen and paints keep their colour.
+ * Picture lighting (review C1). Mostly self-lit, with a little diffuse light for shading. With
+ * Neutral tone mapping and the kit exposure (0.95), white paper lands at about 240 sRGB, not
+ * 255, and paints show at nearly their swatch colour. The paper stays under the bloom threshold.
  */
-export const CANVAS_DIFFUSE = 0.34;
-export const CANVAS_GLOW = 0.26;
+export const CANVAS_DIFFUSE = 0.3;
+export const CANVAS_GLOW = 0.9;
 /** Bloom for this game: high threshold so only the fairy lights and sparkles glow. */
-export const COLORING_BLOOM = { strength: 0.45, radius: 0.5, threshold: 1.25 };
+export const COLORING_BLOOM = { strength: 0.45, radius: 0.5, threshold: 1.5 };
+/** Neutral keeps hue and saturation of mid-tones (ACES Filmic paled the paints). */
+export const COLORING_TONE_MAPPING: THREE.ToneMapping = THREE.NeutralToneMapping;
+/** Frame border kept around the paper when a portrait phone frames the paper only. */
+const PAPER_BORDER = 0.12;
 
 const YAW_MAX = 0.42;
 const PITCH_MIN = -0.12;
@@ -101,6 +107,7 @@ function easelOutline(): FitPoint[] {
 }
 
 const OUTLINE = easelOutline();
+const PAPER_OUTLINE = paperOutline(ART / 2, PAPER_BORDER);
 
 function makeSkyTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -196,17 +203,14 @@ export class EaselView implements ArtView {
     this.artTex = new THREE.CanvasTexture(artCanvas);
     this.artTex.colorSpace = THREE.SRGBColorSpace;
     this.artTex.anisotropy = Math.min(8, kit.renderer.capabilities.getMaxAnisotropy());
-    const artMat = new THREE.MeshPhysicalMaterial({
+    // Lambert: diffuse plus self-light, no specular, clearcoat or reflections. Any white
+    // highlight on the paper pales the paints (C1: red read as pink under the clearcoat).
+    const artMat = new THREE.MeshLambertMaterial({
       map: this.artTex,
       emissiveMap: this.artTex,
       emissive: new THREE.Color(1, 1, 1),
       emissiveIntensity: CANVAS_GLOW,
       color: new THREE.Color(CANVAS_DIFFUSE, CANVAS_DIFFUSE, CANVAS_DIFFUSE),
-      roughness: 0.62,
-      metalness: 0,
-      clearcoat: 0.25,
-      clearcoatRoughness: 0.4,
-      envMapIntensity: 0.15,
     });
     this.art = new THREE.Mesh(new THREE.PlaneGeometry(ART, ART), artMat);
     this.art.position.z = ART_Z;
@@ -297,12 +301,14 @@ export class EaselView implements ArtView {
     // Board: a coloured outer frame, a warm inner frame and the picture. The frame stays under
     // the bloom threshold (no halo over the paper edge): a warm mid-tone instead of near-white
     // cream, softer clearcoat and weaker reflections. It also gives the white paper a crisp edge.
+    // No sheen and a light clearcoat: the white sheen rim made a halo round the frame (C2).
     const outerMat = candyMaterial(mixHex(palette.coral, palette.bubblegum, 0.4), {
       roughness: 0.4,
-      clearcoat: 0.7,
+      clearcoat: 0.3,
       clearcoatRoughness: 0.28,
+      sheen: 0,
     });
-    outerMat.envMapIntensity = 0.5;
+    outerMat.envMapIntensity = 0.25;
     const outer = new THREE.Mesh(roundedBox(FRAME + 0.22, FRAME + 0.22, 0.16, 0.12), outerMat);
     outer.position.z = -0.06;
     outer.castShadow = true;
@@ -353,12 +359,14 @@ export class EaselView implements ArtView {
   }
 
   private buildRoomDetails(scene: THREE.Scene): void {
-    // A night window on the back wall.
-    const frame = new THREE.Mesh(roundedBox(3.7, 4.7, 0.24, 0.14), candyMaterial(palette.cream, { roughness: 0.4 }));
+    // A night window on the back wall. Matte, muted frame: the glossy cream one glowed next to
+    // the tools and pulled the eye from the picture (review C2).
+    const frameMat = matteMaterial(mixHex(palette.cream, palette.plum, 0.35), 0.8);
+    const frame = new THREE.Mesh(roundedBox(3.7, 4.7, 0.24, 0.14), frameMat);
     frame.position.set(-6.4, 6.4, -9.95);
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 4.2), new THREE.MeshBasicMaterial({ map: makeSkyTexture() }));
     glass.position.set(-6.4, 6.4, -9.8);
-    const barMat = candyMaterial(palette.cream, { roughness: 0.4 });
+    const barMat = frameMat;
     const vbar = new THREE.Mesh(roundedBox(0.12, 4.2, 0.1, 0.04), barMat);
     vbar.position.set(-6.4, 6.4, -9.74);
     const hbar = new THREE.Mesh(roundedBox(3.2, 0.12, 0.1, 0.04), barMat);
@@ -447,9 +455,13 @@ export class EaselView implements ArtView {
     this.w = Math.max(1, width);
     this.h = Math.max(1, height);
     const cam = this.kit.camera;
-    // Fit the whole easel (not only the picture) right of the tray and inside the safe areas.
+    // Fit the whole easel right of the tray and inside the safe areas; portrait phones fit the
+    // paper only, so the picture is big enough for small fingers.
     const area = { width: this.w, height: this.h, insets: this.insets, fov: cam.fov };
-    this.fitDist = fitDistance(OUTLINE, area, FIT_MARGIN);
+    this.fitDist =
+      fitSubject(this.w, this.h) === 'paper'
+        ? fitDistance(PAPER_OUTLINE, area, 0)
+        : fitDistance(OUTLINE, area, FIT_MARGIN);
     const { dx, dy } = freeArea(area);
     cam.setViewOffset(this.w, this.h, -dx, -dy, this.w, this.h);
     cam.updateProjectionMatrix();

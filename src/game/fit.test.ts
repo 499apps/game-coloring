@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { fitDistance, freeArea, projectFit, type FitArea, type FitPoint } from './fit';
+import {
+  fitDistance,
+  fitSubject,
+  freeArea,
+  paperOutline,
+  projectFit,
+  type FitArea,
+  type FitPoint,
+} from './fit';
 
 const BOX: FitPoint[] = [
   { x: -2.4, y: -2.6, z: 0.4 },
@@ -43,6 +51,25 @@ describe('easel fit', () => {
     // Tight: the widest point touches the free area edge (with the margin).
     const edge = projectFit({ x: -2.5, y: 0, z: 0.4 }, d, PHONE);
     expect(edge.x).toBeCloseTo(PHONE.insets.left, 3);
+  });
+
+  it('frames the paper on portrait phones and the easel elsewhere', () => {
+    expect(fitSubject(390, 844)).toBe('paper');
+    expect(fitSubject(360, 640)).toBe('paper');
+    expect(fitSubject(844, 390)).toBe('easel');
+    expect(fitSubject(768, 1024)).toBe('easel');
+    expect(fitSubject(1440, 900)).toBe('easel');
+  });
+
+  it('portrait phone: the paper fills 85% or more of the free width (review C3)', () => {
+    // Paper: 4 world units wide (half 2), 0.12 of frame showing around it.
+    const outline = paperOutline(2, 0.12);
+    const d = fitDistance(outline, PHONE, 0);
+    const left = projectFit({ x: -2, y: 0, z: 0 }, d, PHONE);
+    const right = projectFit({ x: 2, y: 0, z: 0 }, d, PHONE);
+    const free = freeArea(PHONE);
+    expect((right.x - left.x) / free.width).toBeGreaterThanOrEqual(0.85);
+    for (const p of outline) expect(inside(projectFit(p, d, PHONE), PHONE)).toBe(true);
   });
 
   it('fits any box in any free area (property)', () => {

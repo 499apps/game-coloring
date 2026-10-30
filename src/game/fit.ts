@@ -59,6 +59,29 @@ export function fitDistance(points: readonly FitPoint[], a: FitArea, margin = 0)
   return d;
 }
 
+/** Widest phone layout (same as the kit's drawer breakpoint). */
+export const PHONE_MAX_WIDTH = 719;
+
+/**
+ * What the home camera frames. Portrait phones frame the paper (the frame edges may run under
+ * the tray or off screen), so the picture gets most of the narrow width (review C3). Other
+ * screens frame the whole easel.
+ */
+export function fitSubject(width: number, height: number): 'paper' | 'easel' {
+  return width <= PHONE_MAX_WIDTH && height > width ? 'paper' : 'easel';
+}
+
+/** Corners of the paper (half size `half`) plus a thin border, in the camera basis. */
+export function paperOutline(half: number, border: number): FitPoint[] {
+  const h = half + border;
+  return [
+    { x: -h, y: -h, z: 0 },
+    { x: h, y: -h, z: 0 },
+    { x: -h, y: h, z: 0 },
+    { x: h, y: h, z: 0 },
+  ];
+}
+
 /** Where a point lands on screen (CSS pixels) for a camera at distance `d` (for tests). */
 export function projectFit(p: FitPoint, d: number, a: FitArea): { x: number; y: number } {
   const w = Math.max(1, a.width);

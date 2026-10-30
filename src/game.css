@@ -148,45 +148,95 @@
     0 0 18px rgba(255, 230, 109, 0.55);
 }
 
-/* Phones: two groups above and below the kit's menu button in the middle of the left edge. */
+/*
+ * Phones: the kit's menu button sits at the top-left corner, so the tray is one column below
+ * it (review C6). The picture gets the rest of the width.
+ */
 @media (max-width: 719px) {
   .cl-tray {
-    top: 0;
-    bottom: 0;
+    top: calc(76px + var(--g499-safe-top));
+    bottom: calc(10px + var(--g499-safe-bottom));
     left: calc(6px + var(--g499-safe-left));
     width: 68px;
+    justify-content: center;
+    gap: 12px;
     transform: none;
-  }
-
-  .cl-tray-top {
-    position: absolute;
-    left: 0;
-    bottom: calc(50% + 38px);
-  }
-
-  .cl-tray-bottom {
-    position: absolute;
-    left: 0;
-    top: calc(50% + 38px);
   }
 }
 
-/* Short phones in landscape with the drawer: a two-column tray right of the menu button. */
+/* Short phones in landscape: two tray columns side by side, below the menu button's row. */
 @media (max-width: 719px) and (max-height: 520px) {
   .cl-tray {
-    top: 50%;
+    top: calc(50% + 20px);
     bottom: auto;
-    left: calc(70px + var(--g499-safe-left));
+    left: calc(6px + var(--g499-safe-left));
     width: auto;
     flex-direction: row;
     align-items: center;
     gap: 8px;
     transform: translateY(-50%);
   }
+}
 
-  .cl-tray-top,
-  .cl-tray-bottom {
-    position: static;
+/* ---------- Next picture (after "All done!"), bottom left ---------- */
+
+.cl-next {
+  position: absolute;
+  left: calc(var(--cl-tray-right, 96px) + 12px);
+  bottom: calc(16px + var(--g499-safe-bottom));
+  z-index: 21;
+  width: 132px;
+  height: 132px;
+  padding: 0;
+  border: 5px solid var(--g499-lemon);
+  border-radius: 26px;
+  overflow: hidden;
+  background: #fbf6ea;
+  cursor: pointer;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.45),
+    0 0 0 6px rgba(255, 230, 109, 0.25);
+  animation: cl-rise 260ms cubic-bezier(0.2, 1.2, 0.4, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cl-next[hidden] {
+  display: none;
+}
+
+.cl-next:active {
+  transform: scale(0.95);
+}
+
+.cl-next:focus-visible {
+  outline: 3px solid var(--g499-cream);
+  outline-offset: 3px;
+}
+
+.cl-next .cl-thumb {
+  width: 100%;
+  height: 100%;
+}
+
+.cl-next-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--g499-lime);
+  color: var(--g499-ink);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 719px) {
+  .cl-next {
+    width: 112px;
+    height: 112px;
   }
 }
 
@@ -545,7 +595,8 @@
 /* Test mode pauses animations at their first frame; these must show their end state. */
 html.g499-test .cl-panel,
 html.g499-test .cl-sheet,
-html.g499-test .cl-toast {
+html.g499-test .cl-toast,
+html.g499-test .cl-next {
   animation: none !important;
 }
 
@@ -556,7 +607,8 @@ html.g499-test .cl-toast {
   .cl-color-dot,
   .cl-panel,
   .cl-sheet,
-  .cl-toast {
+  .cl-toast,
+  .cl-next {
     transition: none !important;
     animation: none !important;
   }

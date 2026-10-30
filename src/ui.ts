@@ -39,6 +39,8 @@ export interface UiCallbacks {
   undo(): void;
   redo(): void;
   recenter(): void;
+  /** Open the picture picker (tray button). */
+  pictures(): void;
   pickScene(id: string): void;
   openSaved(id: string): void;
   downloadSaved(id: string): void;
@@ -85,6 +87,9 @@ export class Ui {
   private readonly undoBtn: HTMLButtonElement;
   private readonly redoBtn: HTMLButtonElement;
   private readonly centerBtn: HTMLButtonElement;
+  private readonly picturesBtn: HTMLButtonElement;
+  private readonly nextBtn: HTMLButtonElement;
+  private nextId: string | null = null;
   private readonly scrim: HTMLElement;
   private readonly toolsPanel: HTMLElement;
   private readonly palettePanel: HTMLElement;
@@ -102,8 +107,8 @@ export class Ui {
     this.root = root;
     this.cb = cb;
 
-    // Tray: tool and paint on top, undo / redo / home view below. On phones the two groups
-    // sit above and below the kit's menu button at the middle of the left edge.
+    // Tray: tool, paint and pictures on top, undo / redo / home view below. On phones the
+    // groups form one column under the kit's menu button at the top-left corner.
     this.tray = el('div', 'cl-tray', { role: 'toolbar', 'aria-label': 'Tools', 'aria-orientation': 'vertical' });
     const top = el('div', 'cl-tray-group cl-tray-top');
     const bottom = el('div', 'cl-tray-group cl-tray-bottom');
@@ -113,12 +118,28 @@ export class Ui {
       'aria-haspopup': 'true',
       'aria-expanded': 'false',
     });
+    // Pictures in the tray too, so phones reach them without the drawer (review C4).
+    this.picturesBtn = button('cl-btn', 'Pictures', uiIcon('pictures'), { 'data-ui': 'pictures', 'aria-haspopup': 'dialog' });
     this.undoBtn = button('cl-btn', 'Undo', uiIcon('undo'), { 'data-ui': 'undo' });
     this.redoBtn = button('cl-btn', 'Redo', uiIcon('redo'), { 'data-ui': 'redo' });
     this.centerBtn = button('cl-btn', 'Home view', uiIcon('recenter'), { 'data-ui': 'recenter' });
-    top.append(this.toolBtn, this.colorBtn);
+    top.append(this.toolBtn, this.colorBtn, this.picturesBtn);
     bottom.append(this.undoBtn, this.redoBtn, this.centerBtn);
     this.tray.append(top, bottom);
+
+    // "Next picture": a big thumbnail button on the left after "All done!".
+    this.nextBtn = button(
+      'cl-next',
+      'Next picture',
+      `<span class="cl-next-badge" aria-hidden="true">${uiIcon('next')}</span>`,
+      { 'data-ui': 'next', hidden: '' },
+    );
+    this.nextBtn.prepend(thumbCanvas());
+    this.nextBtn.addEventListener('click', () => {
+      const id = this.nextId;
+      this.hideNext();
+      if (id) cb.pickScene(id);
+    });
 
     this.scrim = el('div', 'cl-scrim', { hidden: '' });
 
@@ -201,10 +222,14 @@ export class Ui {
 
     this.toastEl = el('div', 'cl-toast', { role: 'status', 'aria-live': 'polite', hidden: '' });
 
-    root.append(this.tray, this.scrim, this.toolsPanel, this.palettePanel, this.picker, this.gallery, this.toastEl);
+    root.append(this.tray, this.nextBtn, this.scrim, this.toolsPanel, this.palettePanel, this.picker, this.gallery, this.toastEl);
 
     this.toolBtn.addEventListener('click', () => this.togglePanel(this.toolsPanel, this.toolBtn));
     this.colorBtn.addEventListener('click', () => this.togglePanel(this.palettePanel, this.colorBtn));
+    this.picturesBtn.addEventListener('click', () => {
+      cb.sound('tick');
+      cb.pictures();
+    });
     this.undoBtn.addEventListener('click', () => cb.undo());
     this.redoBtn.addEventListener('click', () => cb.redo());
     this.centerBtn.addEventListener('click', () => cb.recenter());
@@ -394,6 +419,27 @@ export class Ui {
       return true;
     }
     return false;
+  }
+
+  /** Show the "next picture" button with that picture's thumbnail. */
+  showNext(id: string): void {
+    const scene = SCENES.find((s) => s.id === id);
+    if (!scene) return;
+    this.nextId = id;
+    const c = this.nextBtn.querySelector('canvas');
+    if (c) this.cb.thumb(id, c);
+    this.nextBtn.setAttribute('aria-label', `Next picture: ${scene.label}`);
+    this.nextBtn.hidden = false;
+  }
+
+  hideNext(): void {
+    this.nextId = null;
+    this.nextBtn.hidden = true;
+  }
+
+  /** The picture the "next" button offers, or null when it is hidden. */
+  get nextScene(): string | null {
+    return this.nextBtn.hidden ? null : this.nextId;
   }
 
   toast(icon: UiIcon, text: string, ms = 2400): void {

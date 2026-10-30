@@ -14,7 +14,7 @@ import {
   interiorPoint,
   labelRegions,
   largestInnerRegion,
-  nearestLabel,
+  pickRegion,
   wallsFromRgba,
   type FocusRegion,
   type RegionMap,
@@ -298,13 +298,24 @@ export class Painter {
     this.revision++;
   }
 
-  /** Fill the region at picture pixel (x, y). Null when there is no region near. */
-  fillAt(x: number, y: number, hex: string): FillOutcome | null {
+  /**
+   * Fill the region a tap at picture pixel (x, y) means. `maxR` is the finger tolerance in
+   * picture px (see toleranceToArt); small unpainted parts within it win. Null when no region
+   * is near.
+   */
+  fillAt(x: number, y: number, hex: string, maxR = 14): FillOutcome | null {
     const map = this.map;
     if (!map) return null;
-    const label = nearestLabel(map, x, y, 14);
+    const label = pickRegion(map, x, y, { maxR, isPainted: (l) => this.regionPainted(l) });
     if (label === 0) return null;
     return this.fillLabel(label, hex);
+  }
+
+  /** True when the paint layer has paint in the middle of a region. */
+  private regionPainted(label: number): boolean {
+    const map = this.map;
+    const p = map ? interiorPoint(map, label) : null;
+    return p ? (this.doc.pixelAt(p.x, p.y) & packRgba(0, 0, 0, 255)) !== 0 : false;
   }
 
   fillLabel(label: number, hex: string): FillOutcome | null {
@@ -529,7 +540,9 @@ export class Painter {
     const map = this.map;
     if (!map) return null;
     const r = largestInnerRegion(map);
-    const p = r ? interiorPoint(map, r.label) : null;
+    // The deepest point (wide clearance cap), so a test tap there is never within the finger
+    // tolerance of a small part (pickRegion would prefer that part).
+    const p = r ? interiorPoint(map, r.label, 256) : null;
     return p ? { u: (p.x + 0.5) / ART_SIZE, v: (p.y + 0.5) / ART_SIZE } : null;
   }
 

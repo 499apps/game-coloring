@@ -11,6 +11,7 @@ import {
 } from '../src/kit/smoke/helpers';
 import { decodePng } from '../src/kit/smoke/png-decode';
 import { PALETTE, hexToBytes } from '../src/game/tools';
+import { deltaE, medianRgb } from '../src/game/color-diff';
 
 defineSmokeSuite([
   {
@@ -36,6 +37,7 @@ interface ColoringState {
   redo: number;
   picker: boolean;
   flat: boolean;
+  next: string | null;
 }
 
 interface ColoringApi {
@@ -205,6 +207,96 @@ test.describe('coloring game', () => {
       await page.keyboard.press('Control+z');
       await expect.poll(async () => (await state(page)).painted).toBe(0);
     }
+    await guard.assertClean();
+  });
+
+  test('painted colour matches its swatch at tier=high (review C1)', async ({ page, baseURL }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'colour fidelity runs once, in desktop Chromium');
+    const guard = await openFresh(page, baseURL, '?test=1&tier=high&scene=rocket');
+    test.skip(!(await hasWebgl(page)), 'no WebGL in this engine on this host');
+    const red = PALETTE.findIndex((p) => p.hex === '#ff4f5e');
+    expect(red, 'Red is in the palette').toBeGreaterThanOrEqual(0);
+    expect(red, 'Red has a number key').toBeLessThan(9);
+    await page.keyboard.press(String(red + 1));
+    await expect.poll(async () => (await state(page)).color).toBe(red);
+    expect((await state(page)).tool).toBe('fill');
+
+    const target = await subjectPoint(page);
+    await page.mouse.click(target.x, target.y);
+    await expect.poll(async () => (await state(page)).painted, { message: 'fill changed pixels' }).toBeGreaterThan(500);
+    // Let the ripple and the splat particles fade (frozen clock: frames on demand).
+    await stepFrames(page, 90);
+
+    const shot = await page.screenshot({
+      clip: { x: target.x - 4, y: target.y - 4, width: 9, height: 9 },
+      scale: 'css',
+      animations: 'disabled',
+    });
+    const rgb = medianRgb(decodePng(shot).data);
+    const swatch = hexToBytes('#ff4f5e');
+    const dE = deltaE(rgb, swatch);
+    testInfo.annotations.push({
+      type: 'colour',
+      description: `easel rgb(${rgb.join(', ')}) vs swatch rgb(${swatch.join(', ')}): deltaE ${dE.toFixed(2)}`,
+    });
+    expect(dE, 'painted red on the easel against the Red swatch (CIE76)').toBeLessThan(8);
+    await guard.assertClean();
+  });
+
+  test('portrait phones: the picture is big and the tray has a Pictures button (review C3, C4)', async ({
+    page,
+    baseURL,
+    hasTouch,
+  }) => {
+    const vp = page.viewportSize() ?? { width: 0, height: 0 };
+    test.skip(!(vp.width <= 719 && vp.height > vp.width), 'portrait phone projects only');
+    const guard = await openFresh(page, baseURL, '?test=1&scene=fish');
+    test.skip((await state(page)).flat, 'flat paper mode has its own layout');
+    await stepFrames(page, 4);
+    const width = await page.evaluate(() => (window as unknown as { __g499: { pictureWidth(): number } }).__g499.pictureWidth());
+    const trayRight = await page.evaluate(() => {
+      let right = 0;
+      for (const g of document.querySelectorAll('.cl-tray-group')) right = Math.max(right, g.getBoundingClientRect().right);
+      return right;
+    });
+    // The paper fills about 94% of the free area (fit.test.ts); with the 12 + 14 px side
+    // margins that is 80% or more of all the width right of the tray.
+    expect(width / (vp.width - trayRight)).toBeGreaterThanOrEqual(0.8);
+    // The tray starts below the menu button (top-left corner), one column.
+    const toggle = await page.locator('.g499-drawer-toggle').boundingBox();
+    const tray = await page.locator('.cl-tray-top').boundingBox();
+    expect(toggle && tray && tray.y >= toggle.y + toggle.height, 'tray below the menu button').toBe(true);
+    // Pictures straight from the tray, no drawer.
+    await press(page.locator('[data-ui="pictures"]'), hasTouch);
+    await expect(page.locator('.cl-picker')).toBeVisible();
+    await guard.assertClean();
+  });
+
+  test('after "All done!" a big next-picture button on the left opens the next picture (review C4)', async ({
+    page,
+    baseURL,
+    hasTouch,
+  }) => {
+    test.skip(hasTouch, 'the keyboard round runs on desktop projects');
+    const guard = await openFresh(page, baseURL, '?test=1&scene=fish');
+    // Space fills the focused part, ArrowDown moves to the next part.
+    await page.keyboard.press('Space');
+    for (let i = 0; i < 80 && (await state(page)).next === null; i++) {
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Space');
+    }
+    const done = await state(page);
+    expect(done.next, 'next picture offered').not.toBeNull();
+    expect(done.next).not.toBe('fish');
+    const next = page.locator('[data-ui="next"]');
+    await expect(next).toBeVisible();
+    const box = await next.boundingBox();
+    const vw = page.viewportSize()?.width ?? 0;
+    expect(box && box.x < vw / 3, 'next button on the left').toBe(true);
+    expect(box && box.width >= 56 && box.height >= 56, 'big touch target').toBe(true);
+    await next.click();
+    await expect.poll(async () => (await state(page)).scene).toBe(done.next);
+    await expect(next).toBeHidden();
     await guard.assertClean();
   });
 

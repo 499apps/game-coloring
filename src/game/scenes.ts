@@ -409,3 +409,19 @@ export function sceneById(id: string | null | undefined): SceneDef | undefined {
 export function sceneIndex(id: string): number {
   return SCENES.findIndex((s) => s.id === id);
 }
+
+/**
+ * The picture offered after "All done!": the next one in picker order that has no saved paint
+ * yet (wrapping round), else simply the next one. Never the current picture when there are two
+ * or more.
+ */
+export function nextSceneId(current: string, hasPaint: (id: string) => boolean = () => false): string {
+  const n = SCENES.length;
+  if (n === 0) return current;
+  const start = Math.max(0, sceneIndex(current));
+  for (let k = 1; k < n; k++) {
+    const s = SCENES[(start + k) % n] as SceneDef;
+    if (!hasPaint(s.id)) return s.id;
+  }
+  return (SCENES[(start + 1) % n] as SceneDef).id;
+}

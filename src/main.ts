@@ -14,7 +14,7 @@ import { onResize } from './kit/lifecycle';
 import { createShell } from './kit/shell';
 import { createStage } from './kit/stage';
 import { PointerControls, type StrokeSample } from './controls';
-import { COLORING_BLOOM, EaselView, FlatView } from './scene';
+import { COLORING_BLOOM, COLORING_TONE_MAPPING, EaselView, FlatView } from './scene';
 import {
   applyCommand,
   createEditor,
@@ -38,7 +38,8 @@ import {
   parsePrefs,
   serializePrefs,
 } from './game/save';
-import { SCENES, sceneById } from './game/scenes';
+import { TAP_TOLERANCE_CSS, toleranceToArt } from './game/regions';
+import { SCENES, nextSceneId, sceneById } from './game/scenes';
 import { PALETTE, keyToCommand } from './game/tools';
 import { ART_SIZE, Painter, composePicture, type FillOutcome, type StrokeInput } from './painter';
 import { Ui } from './ui';
@@ -100,7 +101,8 @@ const stage = createStage({
   reducedMotion: shell.reducedMotion,
   label: 'An easel with a picture to color',
   fallback: { title: 'Coloring', text: 'Flat paper mode: 3D is not available in this browser.' },
-  renderer: { bloom: COLORING_BLOOM },
+  // Neutral tone mapping keeps painted colours true to their swatches (review C1).
+  renderer: { bloom: COLORING_BLOOM, toneMapping: COLORING_TONE_MAPPING },
 });
 
 const painter = new Painter(stage.rng);
@@ -145,6 +147,7 @@ const ui = new Ui(app, {
   undo: () => undo(),
   redo: () => redo(),
   recenter: () => recenter(),
+  pictures: () => openPicker(),
   pickScene: (id) => openScene(id, true),
   openSaved: (id) => openScene(id, true),
   downloadSaved: (id) => void downloadScene(id),
@@ -248,6 +251,9 @@ function checkComplete(): void {
   view.celebrate();
   shell.synth.success();
   ui.toast('star', 'All done!');
+  // A big "next picture" button on the left: no menu or reading needed (review C4).
+  saveNow();
+  ui.showNext(nextSceneId(editor.scene, (id) => storedArt(id) !== null));
 }
 
 function afterFill(o: FillOutcome | null, p: ArtPoint): void {
@@ -265,9 +271,18 @@ function afterFill(o: FillOutcome | null, p: ArtPoint): void {
   requestDraw();
 }
 
+/** Width of the shown picture in CSS px (changes with zoom and screen size). */
+function pictureCssWidth(): number {
+  const a = view.project({ u: 0, v: 0.5 });
+  const b = view.project({ u: 1, v: 0.5 });
+  return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0;
+}
+
 function fillAt(p: ArtPoint): void {
   hideFocus();
-  afterFill(painter.fillAt(p.u * ART_SIZE, p.v * ART_SIZE, paintHex()), p);
+  // A finger-sized tolerance (16 CSS px) in picture px, so small parts are easy to hit (C3).
+  const maxR = toleranceToArt(TAP_TOLERANCE_CSS, ART_SIZE, pictureCssWidth());
+  afterFill(painter.fillAt(p.u * ART_SIZE, p.v * ART_SIZE, paintHex(), maxR), p);
 }
 
 function focusPoint(index: number): ArtPoint | null {
@@ -323,6 +338,7 @@ function recenter(): void {
 function newPage(): void {
   shell.menu.close();
   hideFocus();
+  ui.hideNext();
   if (painter.clearPage()) {
     shell.synth.whoosh();
     celebrated = false;
@@ -442,6 +458,7 @@ function openScene(id: string, animate: boolean): void {
   saveNow();
   editor = setScene(editor, id);
   hideFocus();
+  ui.hideNext();
   celebrated = false;
   painter.loadScene(scene);
   savedRevision = painter.revision;
@@ -553,6 +570,7 @@ function resetAll(): void {
   savedRevision = painter.revision;
   celebrated = false;
   hideFocus();
+  ui.hideNext();
   editor = createEditor({ scene: editor.scene });
   if (ui.galleryOpen) ui.renderGallery();
   applyEditor(false);
@@ -657,8 +675,25 @@ stage.ready(
     gallery: ui.galleryOpen,
     zoom: view.zoom,
     flat: stage.kit === null,
+    next: ui.nextScene,
   }),
   {
+    /**
+     * Look gate hint: the paper (0..1 canvas rectangle) is meant to be near-white, so it does
+     * not count as blown-out highlight.
+     */
+    clipExclude: () => {
+      const r = view.element.getBoundingClientRect();
+      const corners = [view.project({ u: 0, v: 0 }), view.project({ u: 1, v: 1 }), view.project({ u: 1, v: 0 }), view.project({ u: 0, v: 1 })];
+      if (r.width <= 0 || r.height <= 0 || corners.some((c) => c === null)) return null;
+      const xs = corners.map((c) => (c as { x: number }).x / r.width);
+      const ys = corners.map((c) => (c as { y: number }).y / r.height);
+      const x = Math.min(...xs);
+      const y = Math.min(...ys);
+      return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+    },
+    /** Picture width on screen in CSS px (tap tolerance tests). */
+    pictureWidth: () => pictureCssWidth(),
     /** Page coordinates of a picture point (0..1), for scripted taps. */
     probe: (u: number, v: number) => {
       const p = view.project({ u, v });

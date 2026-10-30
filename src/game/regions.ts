@@ -147,6 +147,74 @@ export function nearestLabel(map: RegionMap, x: number, y: number, maxR = 12): n
   return 0;
 }
 
+/** Tap tolerance in CSS px: about half a small finger pad (review C3). */
+export const TAP_TOLERANCE_CSS = 16;
+/** Upper bound of the search radius in picture px (keeps one tap cheap on tiny views). */
+export const MAX_PICK_RADIUS = 96;
+
+/**
+ * A tolerance in CSS px as picture px, for a picture of `artPx` pixels shown `pictureCss` CSS
+ * px wide. Zooming in makes the picture wider, so the same finger covers fewer picture px.
+ */
+export function toleranceToArt(cssTolerance: number, artPx: number, pictureCss: number): number {
+  if (!Number.isFinite(pictureCss) || pictureCss <= 0) return Math.min(MAX_PICK_RADIUS, Math.max(1, cssTolerance));
+  const r = Math.round((cssTolerance * artPx) / pictureCss);
+  return Math.min(MAX_PICK_RADIUS, Math.max(1, r));
+}
+
+export interface PickOptions {
+  /** Search radius in picture px (see toleranceToArt). */
+  maxR: number;
+  /** True when a region already has paint. Painted small regions are not preferred. */
+  isPainted?: (label: number) => boolean;
+  /** Regions with an area at or below this count as small. Default (3 * maxR)^2. */
+  smallArea?: number;
+}
+
+/**
+ * The region a tap means.
+ * - Inside a small region: that region.
+ * - Within maxR of a small region that has no paint yet: the nearest such region, when the tap
+ *   is on an outline or near the edge of a big region (within maxR / 2 of it). A tap well inside
+ *   a big part always fills that part (small parts are hard to hit, big parts must not jump).
+ * - Otherwise the region under the tap, or on an outline the nearest region within maxR.
+ * 0 when there is no region near.
+ */
+export function pickRegion(map: RegionMap, x: number, y: number, o: PickOptions): number {
+  const maxR = Math.max(0, Math.min(MAX_PICK_RADIUS, Math.floor(o.maxR)));
+  const small = o.smallArea ?? (3 * maxR) ** 2;
+  const isSmall = (l: number) => (map.regions[l - 1]?.area ?? Infinity) <= small;
+  const direct = labelAt(map, x, y);
+  if (direct !== 0 && isSmall(direct)) return direct;
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  if (direct !== 0 && clearance(map, xi, yi, direct, maxR + 1) > Math.ceil(maxR / 2)) return direct;
+  const r2 = maxR * maxR;
+  const eligible = new Map<number, boolean>();
+  let best = 0;
+  let bestD = Infinity;
+  for (let dy = -maxR; dy <= maxR; dy++) {
+    for (let dx = -maxR; dx <= maxR; dx++) {
+      const d = dx * dx + dy * dy;
+      if (d > r2 || d >= bestD) continue;
+      const l = labelAt(map, xi + dx, yi + dy);
+      if (l === 0 || l === direct) continue;
+      let ok = eligible.get(l);
+      if (ok === undefined) {
+        ok = isSmall(l) && !(o.isPainted?.(l) ?? false);
+        eligible.set(l, ok);
+      }
+      if (ok) {
+        best = l;
+        bestD = d;
+      }
+    }
+  }
+  if (best !== 0) return best;
+  if (direct !== 0) return direct;
+  return nearestLabel(map, x, y, maxR);
+}
+
 const DIRS8: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
   [-1, 0],
@@ -175,7 +243,7 @@ export function clearance(map: RegionMap, x: number, y: number, label: number, m
  * A point well inside a region (good for a focus marker or a test tap): the sample with the
  * most room around it on a coarse grid. Always returns a pixel of the region when it exists.
  */
-export function interiorPoint(map: RegionMap, label: number): Point | null {
+export function interiorPoint(map: RegionMap, label: number, maxD = 64): Point | null {
   const info = map.regions[label - 1];
   if (!info || info.area === 0) return null;
   const bw = info.maxX - info.minX + 1;
@@ -186,7 +254,7 @@ export function interiorPoint(map: RegionMap, label: number): Point | null {
   for (let y = info.minY + (step >> 1); y <= info.maxY; y += step) {
     for (let x = info.minX + (step >> 1); x <= info.maxX; x += step) {
       if (map.labels[y * map.width + x] !== label) continue;
-      const s = clearance(map, x, y, label);
+      const s = clearance(map, x, y, label, maxD);
       if (s > bestScore) {
         bestScore = s;
         best = { x, y };
