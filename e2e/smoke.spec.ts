@@ -207,4 +207,31 @@ test.describe('coloring game', () => {
     }
     await guard.assertClean();
   });
+
+  test('frames the picture right of the left tray and inside the screen', async ({ page, baseURL }) => {
+    const guard = await openFresh(page, baseURL, '?test=1&scene=fish');
+    await stepFrames(page, 4);
+    const vp = page.viewportSize() ?? { width: 0, height: 0 };
+    const trayRight = await page.evaluate(() => {
+      let right = 0;
+      for (const g of document.querySelectorAll('.cl-tray-group')) {
+        const b = g.getBoundingClientRect();
+        if (b.width > 0) right = Math.max(right, b.right);
+      }
+      return right;
+    });
+    const corners = await page.evaluate(() => {
+      const api = (window as unknown as TestWindow).__g499;
+      return [api.probe(0, 0), api.probe(1, 0), api.probe(0, 1), api.probe(1, 1)];
+    });
+    for (const c of corners) {
+      expect(c, 'picture corner on screen').not.toBeNull();
+      const p = c as { x: number; y: number };
+      expect(p.x, 'picture clear of the tray').toBeGreaterThan(trayRight);
+      expect(p.x).toBeLessThan(vp.width);
+      expect(p.y).toBeGreaterThan(0);
+      expect(p.y).toBeLessThan(vp.height);
+    }
+    await guard.assertClean();
+  });
 });

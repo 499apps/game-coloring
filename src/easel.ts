@@ -18,6 +18,7 @@ import {
 } from './kit/scene-helpers';
 import { funColors, mixHex, palette } from './kit/theme';
 import type { ArtPoint, ArtView, CursorMode, ViewInsets } from './view';
+import { fitDistance, freeArea, type FitPoint } from './game/fit';
 
 /** Picture size in world units. */
 const ART = 4;
@@ -29,6 +30,10 @@ const ART_Z = 0.085;
 const RIGHT = new THREE.Vector3(1, 0, 0);
 const UP = new THREE.Vector3(0, Math.cos(TILT), -Math.sin(TILT));
 const NORMAL = new THREE.Vector3(0, Math.sin(TILT), Math.cos(TILT));
+/** The ledge is only a little wider than the frame, so the easel stays compact on phones. */
+const LEDGE_W = FRAME + 0.36;
+/** Space kept around the easel outline when the camera frames it (world units). */
+const FIT_MARGIN = 0.1;
 
 /**
  * Picture lighting. A low diffuse part plus a self-lit part keeps white paper just under the
@@ -68,6 +73,34 @@ function rod(a: THREE.Vector3, b: THREE.Vector3, radius: number, mat: THREE.Mate
   mesh.receiveShadow = true;
   return mesh;
 }
+
+/**
+ * Outline of the easel (frame, clamp, ledge, pot) in the home camera basis: x right, y up,
+ * z toward the camera, relative to the camera target. The camera fits all of it in the free area.
+ */
+function easelOutline(): FitPoint[] {
+  const out: FitPoint[] = [];
+  const target = CENTER.clone().addScaledVector(NORMAL, ART_Z);
+  const r = new THREE.Vector3();
+  // Board space maps straight onto the camera basis (the board leans with the camera).
+  const board = (x: number, y: number, z: number) => out.push({ x, y, z: z - ART_Z });
+  const world = (x: number, y: number, z: number) => {
+    r.set(x, y, z).sub(target);
+    out.push({ x: r.dot(RIGHT), y: r.dot(UP), z: r.dot(NORMAL) });
+  };
+  const f = (FRAME + 0.22) / 2;
+  for (const sx of [-1, 1]) {
+    board(sx * f, f, 0.02);
+    board(sx * f, -f, 0.02);
+    board(sx * 0.45, FRAME / 2 + 0.35, 0.19);
+    world((sx * LEDGE_W) / 2, 0.42, 0.75);
+    world((sx * LEDGE_W) / 2, 0.7, 0.76);
+  }
+  world(1.85 + 0.27, 0.95, 0.42 + 0.27);
+  return out;
+}
+
+const OUTLINE = easelOutline();
 
 function makeSkyTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -261,23 +294,38 @@ export class EaselView implements ArtView {
     bar.castShadow = true;
     scene.add(bar);
 
-    // Board: a coloured outer frame, a cream inner frame and the picture.
-    const outer = new THREE.Mesh(roundedBox(FRAME + 0.22, FRAME + 0.22, 0.16, 0.12), candyMaterial(mixHex(palette.coral, palette.bubblegum, 0.4)));
+    // Board: a coloured outer frame, a warm inner frame and the picture. The frame stays under
+    // the bloom threshold (no halo over the paper edge): a warm mid-tone instead of near-white
+    // cream, softer clearcoat and weaker reflections. It also gives the white paper a crisp edge.
+    const outerMat = candyMaterial(mixHex(palette.coral, palette.bubblegum, 0.4), {
+      roughness: 0.4,
+      clearcoat: 0.7,
+      clearcoatRoughness: 0.28,
+    });
+    outerMat.envMapIntensity = 0.5;
+    const outer = new THREE.Mesh(roundedBox(FRAME + 0.22, FRAME + 0.22, 0.16, 0.12), outerMat);
     outer.position.z = -0.06;
     outer.castShadow = true;
     outer.receiveShadow = true;
-    const inner = new THREE.Mesh(roundedBox(FRAME, FRAME, 0.14, 0.1), candyMaterial(palette.cream, { roughness: 0.38, clearcoat: 0.8 }));
+    const innerMat = candyMaterial(mixHex(palette.cream, palette.tangerine, 0.5), {
+      roughness: 0.5,
+      clearcoat: 0.4,
+      clearcoatRoughness: 0.35,
+      sheen: 0,
+    });
+    innerMat.envMapIntensity = 0.45;
+    const inner = new THREE.Mesh(roundedBox(FRAME, FRAME, 0.14, 0.1), innerMat);
     inner.receiveShadow = true;
     const clampBlock = new THREE.Mesh(roundedBox(0.9, 0.26, 0.34, 0.09), wood);
     clampBlock.position.set(0, FRAME / 2 + 0.22, 0.02);
     clampBlock.castShadow = true;
     this.board.add(outer, inner, clampBlock);
 
-    const ledge = new THREE.Mesh(roundedBox(FRAME + 0.8, 0.16, 0.66, 0.06), wood);
+    const ledge = new THREE.Mesh(roundedBox(LEDGE_W, 0.16, 0.66, 0.06), wood);
     ledge.position.set(0, 0.5, 0.42);
     ledge.castShadow = true;
     ledge.receiveShadow = true;
-    const lip = new THREE.Mesh(roundedBox(FRAME + 0.8, 0.16, 0.08, 0.035), wood);
+    const lip = new THREE.Mesh(roundedBox(LEDGE_W, 0.16, 0.08, 0.035), wood);
     lip.position.set(0, 0.62, 0.72);
     lip.castShadow = true;
     scene.add(ledge, lip);
@@ -290,7 +338,7 @@ export class EaselView implements ArtView {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.04, 24), candyMaterial(c, { emissive: c, emissiveIntensity: 0.1 }));
       top.position.y = 0.12;
       jar.add(glass, top);
-      jar.position.set(-2.05 + i * 0.42, 0.71, 0.45);
+      jar.position.set(-1.98 + i * 0.4, 0.71, 0.45);
       scene.add(jar);
     });
     const crayon = new THREE.Group();
@@ -399,15 +447,10 @@ export class EaselView implements ArtView {
     this.w = Math.max(1, width);
     this.h = Math.max(1, height);
     const cam = this.kit.camera;
-    const ins = this.insets;
-    const fw = Math.max(60, this.w - ins.left - ins.right);
-    const fh = Math.max(60, this.h - ins.top - ins.bottom);
-    const t = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
-    const aspect = this.w / this.h;
-    const half = FRAME / 2 + 0.2;
-    this.fitDist = Math.max((half * (this.w / fw)) / (t * aspect), (half * (this.h / fh)) / t);
-    const dx = ins.left + fw / 2 - this.w / 2;
-    const dy = ins.top + fh / 2 - this.h / 2;
+    // Fit the whole easel (not only the picture) right of the tray and inside the safe areas.
+    const area = { width: this.w, height: this.h, insets: this.insets, fov: cam.fov };
+    this.fitDist = fitDistance(OUTLINE, area, FIT_MARGIN);
+    const { dx, dy } = freeArea(area);
     cam.setViewOffset(this.w, this.h, -dx, -dy, this.w, this.h);
     cam.updateProjectionMatrix();
     this.applyCamera();

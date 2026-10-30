@@ -4,6 +4,9 @@
  */
 import type { ArtPoint, ArtView, CursorMode, ViewInsets } from './view';
 
+/** Width of the cream and pink frame ring drawn around the flat paper (.cl-flat-art). */
+const FRAME_RING = 18;
+
 export class FlatView implements ArtView {
   readonly element: HTMLElement;
   readonly centered = true;
@@ -30,7 +33,8 @@ export class FlatView implements ArtView {
     const ins = this.insets;
     const fw = Math.max(40, w - ins.left - ins.right);
     const fh = Math.max(40, h - ins.top - ins.bottom);
-    const size = Math.floor(Math.min(fw, fh));
+    // The paper's frame ring (box-shadow in game.css) must stay inside the free area too.
+    const size = Math.max(24, Math.floor(Math.min(fw, fh) - FRAME_RING * 2));
     this.box = { x: Math.round(ins.left + (fw - size) / 2), y: Math.round(ins.top + (fh - size) / 2), size };
     const s = this.canvas.style;
     s.width = `${size}px`;
